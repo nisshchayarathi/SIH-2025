@@ -12,18 +12,27 @@ interface Message {
   sourcesCount?: number;
 }
 
+// Helper to clean bot responses
+const cleanBotText = (text: string) =>
+  text
+    .replace(/#+\s?/g, "") // remove Markdown headings
+    .replace(/\*\*/g, "") // remove bold markers
+    .replace(/^\s*[-*]\s*/gm, "") // remove bullet points
+    .trim();
+
 export default function ChatbotPage() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 1,
       sender: "bot",
-      text: "Hello! I'm AyurBot, your AI assistant for Ayurveda, yoga, and holistic wellness. I have access to traditional knowledge about doshas, herbs, treatments, meditation, and natural health practices. How can I help you today?",
+      text: "🌿 Namaste! I'm AyurBot, your AI assistant for Ayurveda, yoga, and holistic wellness. I can help you understand doshas, herbs, treatments, meditation, and natural health practices. How can I support your wellness journey today?",
       time: new Date().toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
       }),
     },
   ]);
+
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -44,74 +53,52 @@ export default function ChatbotPage() {
         minute: "2-digit",
       }),
     };
+
     setMessages((prev) => [...prev, newUserMsg]);
     setInput("");
     setLoading(true);
 
     try {
-      console.log("🚀 Sending request to /api/chat with question:", input);
+      const formattedHistory = messages.map((msg) => ({
+        role: msg.sender === "bot" ? "model" : "user",
+        parts: [{ text: msg.text }],
+      }));
+
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: input,
-          history: messages.map((msg) => ({
-            sender: msg.sender,
-            text: msg.text,
-          })),
+          history: formattedHistory,
         }),
       });
-      console.log("📡 Response status:", res.status);
 
-      if (!res.ok) {
-        throw new Error(`API error: ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
 
       const data = await res.json();
-      console.log("📦 Response data:", data);
 
-      if (data.error) {
-        console.error("API returned error:", data.error, data.details);
-        throw new Error(
-          data.error + (data.details ? ` (${data.details})` : "")
-        );
-      }
+      if (data.error) throw new Error(data.error);
 
       const botMsg: Message = {
         id: Date.now() + 1,
         sender: "bot",
-        text: data.answer || "Sorry, I couldn't find an answer.",
+        text: cleanBotText(data.answer || "I’m not sure, but I can offer general Ayurvedic insight."),
         usedRAG: data.usedRAG || false,
         sourcesCount: data.sourcesCount || 0,
       };
 
-      // Add fallback notice if needed
-      if (data.fallback) {
-        botMsg.text +=
-          "\n\n💡 *Note: I'm currently running in fallback mode due to AI service issues.*";
-      }
       setMessages((prev) => [...prev, botMsg]);
     } catch (error: any) {
-      console.error("Chatbot error:", error);
-
-      let errorMessage =
-        "⚠️ Sorry, I'm having trouble right now. Please try again.";
-
+      let errorMessage = "⚠️ Sorry, I'm having trouble connecting right now. Please try again later.";
       if (error.message.includes("API key")) {
-        errorMessage =
-          "⚠️ Configuration issue detected. Please contact support.";
+        errorMessage = "🔑 Configuration issue detected. Please check your AI API key.";
       } else if (error.message.includes("quota")) {
-        errorMessage =
-          "⚠️ Service temporarily unavailable. Please try again later.";
+        errorMessage = "📊 Service temporarily unavailable due to quota limits.";
       }
 
       setMessages((prev) => [
         ...prev,
-        {
-          id: Date.now() + 2,
-          sender: "bot",
-          text: errorMessage,
-        },
+        { id: Date.now() + 2, sender: "bot", text: errorMessage },
       ]);
     } finally {
       setLoading(false);
@@ -121,15 +108,14 @@ export default function ChatbotPage() {
   return (
     <div className="flex flex-col h-[85vh] bg-gray-50 dark:bg-gray-800 rounded-lg shadow dark:shadow-xl p-4 border dark:border-gray-700">
       <h2 className="text-xl font-semibold mb-2 text-black dark:text-gray-100">
-        AI Health Assistant
+        AyurBot 🌿 — AI Health Assistant
       </h2>
+
       <div className="flex-1 overflow-y-auto space-y-4 p-2 text-black dark:text-gray-100">
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`flex ${
-              msg.sender === "user" ? "justify-end" : "justify-start"
-            }`}
+            className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
           >
             {msg.sender === "bot" ? (
               <div className="bg-white dark:bg-gray-700 shadow dark:shadow-lg p-3 rounded-lg max-w-[70%] text-sm border dark:border-gray-600">
@@ -138,19 +124,22 @@ export default function ChatbotPage() {
                     <Bot size={14} /> AyurBot
                   </span>
                 </div>
-                <p className="text-gray-900 dark:text-gray-100">{msg.text}</p>
+                <p className="text-gray-900 dark:text-gray-100 whitespace-pre-wrap">
+                  {msg.text}
+                </p>
               </div>
             ) : (
-              <div className="bg-green-600 dark:bg-green-500 text-white p-3 rounded-lg max-w-[70%] text-sm">
+              <div className="bg-green-600 dark:bg-green-500 text-white p-3 rounded-lg max-w-[70%] text-sm whitespace-pre-wrap">
                 {msg.text}
               </div>
             )}
           </div>
         ))}
+
         {loading && (
           <div className="text-gray-400 dark:text-gray-500 text-sm space-y-1">
-            <p>🔍 Searching Ayurvedic knowledge base...</p>
-            <p>AyurBot is preparing your response...</p>
+            <p>🌱 AyurBot is gathering Ayurvedic insights...</p>
+            <p>🧘 Preparing your personalized guidance...</p>
           </div>
         )}
         <div ref={messagesEndRef} />
@@ -159,11 +148,12 @@ export default function ChatbotPage() {
       <div className="mt-3 flex gap-2">
         <input
           type="text"
-          placeholder="Ask about doshas, herbs, treatments, yoga, meditation..."
+          placeholder="Ask about doshas, herbs, yoga, meditation..."
           className="flex-1 border border-gray-300 dark:border-gray-600 rounded px-4 py-2 text-black dark:text-gray-100 bg-white dark:bg-gray-700 placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-green-500 focus:border-transparent"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
+          disabled={loading}
         />
         <button
           onClick={handleSend}
